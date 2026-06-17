@@ -8,14 +8,17 @@ const { createVesselStore, JNPA_BBOX } = require('./ais-parser');
 const { tickFleet } = require('./simulator');
 const { fetchJnpaWeather } = require('./weather');
 const { toWidgetVessel, toWidgetBerths, toWidgetResources, toWidgetAlerts } = require('./widget-adapter');
+const { buildAlertsRss, buildVesselsCsv, buildMetricsCsv, summarize } = require('./feeds');
 
 const PORT = Number(process.env.PORT) || 4000;
 const API_KEY = process.env.AISSTREAM_API_KEY;
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const RECONNECT_DELAY_MS = 5000;
 const HAS_REAL_KEY = Boolean(API_KEY && API_KEY !== 'paste_your_key_here');
+const METRICS_HISTORY_LIMIT = 500;
 
 const store = createVesselStore({ staleMs: 30 * 60 * 1000 });
+const metricsHistory = [];
 let lastConnectError = null;
 let connectedAt = null;
 let mode = HAS_REAL_KEY ? 'connecting-live' : 'simulated';
@@ -73,6 +76,13 @@ function startSimulation() {
 
 setInterval(() => store.pruneStale(), 60 * 1000);
 
+setInterval(() => {
+  const widgetVessels = store.list().map(toWidgetVessel).filter(Boolean);
+  const alerts = toWidgetAlerts(widgetVessels);
+  metricsHistory.push(summarize(widgetVessels, alerts));
+  if (metricsHistory.length > METRICS_HISTORY_LIMIT) metricsHistory.shift();
+}, 60 * 1000);
+
 // --- REST API ----------------------------------------------------------
 
 const app = express();
@@ -103,6 +113,27 @@ app.get('/alerts', (req, res) => {
 
 app.get('/weather', async (req, res) => {
   res.json(await fetchJnpaWeather());
+});
+
+// --- Endpoints aimed at 3DEXPERIENCE's native apps (no custom widget code) -
+
+app.get('/feed.xml', (req, res) => {
+  const widgetVessels = store.list().map(toWidgetVessel).filter(Boolean);
+  const alerts = toWidgetAlerts(widgetVessels);
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  res.set('Content-Type', 'application/rss+xml');
+  res.send(buildAlertsRss(alerts, widgetVessels, baseUrl));
+});
+
+app.get('/vessels.csv', (req, res) => {
+  const widgetVessels = store.list().map(toWidgetVessel).filter(Boolean);
+  res.set('Content-Type', 'text/csv');
+  res.send(buildVesselsCsv(widgetVessels));
+});
+
+app.get('/metrics.csv', (req, res) => {
+  res.set('Content-Type', 'text/csv');
+  res.send(buildMetricsCsv(metricsHistory));
 });
 
 app.get('/health', (req, res) => {
