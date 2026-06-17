@@ -1,0 +1,17 @@
+{
+  "name": "jnpa-ais-source",
+  "version": "1.0.0",
+  "description": "Live AIS data source for JNPA (Nhava Sheva) — connects to aisstream.io and serves normalized vessel data over REST.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/parser.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
